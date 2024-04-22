@@ -7,7 +7,7 @@ import CoreImage
 
 // TODO: handle errors better
 
-class VideoExporter: NSObject {
+class Encoder: NSObject {
     var width: Int
     var height: Int
     var assetWriter: AVAssetWriter
@@ -24,16 +24,18 @@ class VideoExporter: NSObject {
 }
 
 
-@_cdecl("exporter_init")
-func exporterInit(_ width: Int, _ height: Int, _ outFile: SRString) -> VideoExporter {
-    // SRString -> Swift String -> URL
-    let url = URL(fileURLWithPath: outFile.toString())
-    return VideoExporter(width, height, url)
+@_cdecl("encoder_init")
+func encoderInit(_ width: Int, _ height: Int, _ outFile: SRString) -> Encoder {
+    return Encoder(
+        width,
+        height,
+        URL(fileURLWithPath: outFile.toString())
+    )
 }
 
-@_cdecl("exporter_ingest_yuv_frame")
-func exporterIngesYuvFrame(
-    _ videoExporter: VideoExporter,
+@_cdecl("encoder_ingest_yuv_frame")
+func encoderIngestYuvFrame(
+    _ enc: Encoder,
     _ width: Int,
     _ height: Int,
     _ displayTime: Int,
@@ -42,11 +44,24 @@ func exporterIngesYuvFrame(
     _ chrominanceStride: Int,
     _ chrominanceBytes: SRData
     ) {
-    print("Swift: displayTime: \(luminanceStride)")
+
+    print("Swift: yuvDisplayTime: \(displayTime)")
+
+
+    // print("Swift: displayTime: \(luminanceBytes.data)")
+
+    // Make any timestamp adjustments here
+    
+    // Create a pixel buffer
+
+    // Create AVAssetWriterInputPixelBufferAdaptor
+
+
+
     // print("AssetWriter: \(videoExporter.assetWriter.availableMediaTypes)")
 }
 
-@_cdecl("exporter_finish")
-func exporterFinish(_ videoExporter: VideoExporter) {
+@_cdecl("encoder_finish")
+func encoderFinish(_ enc: Encoder) {
     print("Swift: finish encoding")
 }

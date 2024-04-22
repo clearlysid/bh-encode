@@ -5,11 +5,15 @@ use scap::frame::Frame;
 use swift_rs::{swift, Int, SRData, SRString};
 
 #[cfg(target_os = "macos")]
-swift!(fn exporter_init(width: Int, height: Int, out_file: SRString) -> *mut std::ffi::c_void);
+swift!(fn encoder_init(
+    width: Int,
+    height: Int,
+    out_file: SRString
+) -> *mut std::ffi::c_void);
 
 #[cfg(target_os = "macos")]
-swift!(fn exporter_ingest_yuv_frame(
-    exporter: *mut std::ffi::c_void,
+swift!(fn encoder_ingest_yuv_frame(
+    enc: *mut std::ffi::c_void,
     width: Int,
     height: Int,
     display_time: Int,
@@ -20,13 +24,13 @@ swift!(fn exporter_ingest_yuv_frame(
 ));
 
 #[cfg(target_os = "macos")]
-swift!(fn exporter_finish(exporter: *mut std::ffi::c_void));
+swift!(fn encoder_finish(enc: *mut std::ffi::c_void));
 
 pub struct VideoEncoder {
     first_timespan: Option<u64>,
 
     #[cfg(target_os = "macos")]
-    exporter: *mut std::ffi::c_void,
+    encoder: *mut std::ffi::c_void,
 }
 
 #[derive(Debug)]
@@ -40,8 +44,8 @@ impl VideoEncoder {
     pub fn new(options: VideoEncoderOptions) -> Result<Self, Error> {
         println!("Options: {:?}", options);
 
-        let exporter = unsafe {
-            exporter_init(
+        let encoder = unsafe {
+            encoder_init(
                 options.width as Int,
                 options.height as Int,
                 options.path.as_str().into(),
@@ -50,7 +54,7 @@ impl VideoEncoder {
 
         Ok(Self {
             first_timespan: None,
-            exporter,
+            encoder,
         })
     }
 
@@ -61,8 +65,8 @@ impl VideoEncoder {
 
                 #[cfg(target_os = "macos")]
                 unsafe {
-                    exporter_ingest_yuv_frame(
-                        self.exporter,
+                    encoder_ingest_yuv_frame(
+                        self.encoder,
                         data.width as Int,
                         data.height as Int,
                         timestamp as Int,
@@ -84,7 +88,7 @@ impl VideoEncoder {
     pub fn finish(&mut self) -> Result<(), Error> {
         #[cfg(target_os = "macos")]
         unsafe {
-            exporter_finish(self.exporter);
+            encoder_finish(self.encoder);
         }
 
         Ok(())
