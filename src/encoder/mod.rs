@@ -24,6 +24,16 @@ swift!(fn encoder_ingest_yuv_frame(
 ));
 
 #[cfg(target_os = "macos")]
+swift!(fn encoder_ingest_bgra_frame(
+    enc: *mut std::ffi::c_void,
+    width: Int,
+    height: Int,
+    display_time: Int,
+    bytes_per_row: Int,
+    bgra_bytes_raw: SRData
+));
+
+#[cfg(target_os = "macos")]
 swift!(fn encoder_finish(enc: *mut std::ffi::c_void));
 
 pub struct VideoEncoder {
@@ -76,6 +86,25 @@ impl VideoEncoder {
                         data.luminance_bytes.as_slice().into(),
                         data.chrominance_stride as Int,
                         data.chrominance_bytes.as_slice().into(),
+                    );
+                }
+            }
+            Frame::BGRA(data) => {
+                if self.first_timespan == 0 {
+                    self.first_timespan = data.display_time;
+                }
+
+                let timestamp = data.display_time - self.first_timespan;
+
+                #[cfg(target_os = "macos")]
+                unsafe {
+                    encoder_ingest_bgra_frame(
+                        self.encoder,
+                        data.width as Int,
+                        data.height as Int,
+                        timestamp as Int,
+                        data.width as Int,
+                        data.data.as_slice().into(),
                     );
                 }
             }

@@ -30,7 +30,7 @@ fn main() {
     let targets = scap::get_targets();
     println!("🎯 Targets: {:?}", targets);
 
-    const FRAME_TYPE: FrameType = FrameType::YUVFrame;
+    const FRAME_TYPE: FrameType = FrameType::BGRAFrame;
     // #4 Create Options
     let options = capturer::Options {
         fps: 60,
