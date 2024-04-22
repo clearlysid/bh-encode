@@ -1,8 +1,11 @@
 // This program is just a testbed for the library itself
 // Refer to the lib.rs file for the actual implementation
 
-use bh_encode::encoder;
-use scap::{capturer::{Capturer, CGRect, CGPoint, CGSize, self}, frame::Frame};
+use bh_encode::encoder::{VideoEncoder, VideoEncoderOptions};
+use scap::{
+    capturer::{self, CGPoint, CGRect, CGSize, Capturer},
+    frame::{Frame, FrameType},
+};
 
 fn main() {
     // #1 Check if the platform is supported
@@ -27,7 +30,7 @@ fn main() {
     let targets = scap::get_targets();
     println!("🎯 Targets: {:?}", targets);
 
-    const FRAME_TYPE:scap::frame::FrameType = scap::frame::FrameType::BGRAFrame;
+    const FRAME_TYPE: FrameType = FrameType::YUVFrame;
     // #4 Create Options
     let options = capturer::Options {
         fps: 60,
@@ -35,11 +38,14 @@ fn main() {
         show_cursor: true,
         show_highlight: true,
         excluded_targets: None,
-        output_type: FRAME_TYPE,
+        output_type: FRAME_TYPE, // only works on macOS
         output_resolution: scap::capturer::Resolution::_720p,
         source_rect: Some(CGRect {
             origin: CGPoint { x: 0.0, y: 0.0 },
-            size: CGSize { width: 1200.0, height: 400.0 }
+            size: CGSize {
+                width: 1200.0,
+                height: 400.0,
+            },
         }),
         ..Default::default()
     };
@@ -49,17 +55,12 @@ fn main() {
     let [output_width, output_height] = recorder.get_output_frame_size();
 
     // Create Encoder
-    let mut encoder = encoder::Encoder::new(encoder::Options {
-        output: encoder::Output::FileOutput(encoder::FileOutput {
-            output_filename: "1.mp4".to_owned(),
-        }),
-        input: encoder::InputOptions {
-            width: output_width as usize,
-            height: output_height as usize,
-            frame_type: FRAME_TYPE,
-            base_timestamp: None
-        },
-    });
+    let mut encoder = VideoEncoder::new(VideoEncoderOptions {
+        width: output_width,
+        height: output_height,
+        path: "output.mp4".to_string(),
+    })
+    .expect("could not create encoder");
 
     // #6 Start Capture
     recorder.start_capture();
@@ -69,26 +70,34 @@ fn main() {
         let frame = recorder.get_next_frame().expect("Error");
         match &frame {
             Frame::YUVFrame(frame) => {
-                println!("Frame width: {}, Frame height: {}", frame.width, frame.height);
-            }
-            Frame::BGR0(_) => {
-                println!("Recvd windows frame");
+                println!(
+                    "PixelFormat YUV | Width {} | Height {}",
+                    frame.width, frame.height
+                );
             }
             Frame::RGB(frame) => {
-                println!("Recieved frame of width {} and height {}", frame.width, frame.height);
+                println!(
+                    "PixelFormat RGB | Width {} | Height {}",
+                    frame.width, frame.height
+                );
+            }
+            Frame::BGRA(frame) => {
+                println!(
+                    "PixelFormat BGRA | Width {} | Height {}",
+                    frame.width, frame.height
+                );
             }
             _ => {
                 println!("Received frame of unknown type");
             }
         }
 
-
-        encoder.ingest_next_video_frame(&frame);
+        let _ = encoder.ingest_next_video_frame(&frame);
     }
 
     // #8 Stop Capture
     recorder.stop_capture();
 
     // Stop Encoder
-    encoder.done();
+    let _ = encoder.finish();
 }
