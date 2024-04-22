@@ -68,31 +68,7 @@ fn main() {
     // #7 Capture 100 frames
     for _ in 0..100 {
         let frame = recorder.get_next_frame().expect("Error");
-        match &frame {
-            Frame::YUVFrame(frame) => {
-                println!(
-                    "PixelFormat YUV | Width {} | Height {}",
-                    frame.width, frame.height
-                );
-            }
-            Frame::RGB(frame) => {
-                println!(
-                    "PixelFormat RGB | Width {} | Height {}",
-                    frame.width, frame.height
-                );
-            }
-            Frame::BGRA(frame) => {
-                println!(
-                    "PixelFormat BGRA | Width {} | Height {}",
-                    frame.width, frame.height
-                );
-            }
-            _ => {
-                println!("Received frame of unknown type");
-            }
-        }
-
-        let _ = encoder.ingest_next_video_frame(&frame);
+        let _ = encoder.ingest_next_frame(&frame);
     }
 
     // #8 Stop Capture
