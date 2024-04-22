@@ -4,7 +4,7 @@
 use bh_encode::encoder::{VideoEncoder, VideoEncoderOptions};
 use scap::{
     capturer::{self, CGPoint, CGRect, CGSize, Capturer},
-    frame::{Frame, FrameType},
+    frame::FrameType,
 };
 
 fn main() {
@@ -43,8 +43,8 @@ fn main() {
         source_rect: Some(CGRect {
             origin: CGPoint { x: 0.0, y: 0.0 },
             size: CGSize {
-                width: 1200.0,
-                height: 400.0,
+                width: 1280.0,
+                height: 680.0,
             },
         }),
         ..Default::default()
@@ -68,7 +68,9 @@ fn main() {
     // #7 Capture 100 frames
     for _ in 0..100 {
         let frame = recorder.get_next_frame().expect("Error");
-        let _ = encoder.ingest_next_frame(&frame);
+        let _ = encoder
+            .ingest_next_frame(&frame)
+            .expect("frame couldn't be encoded");
     }
 
     // #8 Stop Capture

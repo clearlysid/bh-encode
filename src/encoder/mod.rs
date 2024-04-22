@@ -27,7 +27,7 @@ swift!(fn encoder_ingest_yuv_frame(
 swift!(fn encoder_finish(enc: *mut std::ffi::c_void));
 
 pub struct VideoEncoder {
-    first_timespan: Option<u64>,
+    first_timespan: u64,
 
     #[cfg(target_os = "macos")]
     encoder: *mut std::ffi::c_void,
@@ -42,8 +42,6 @@ pub struct VideoEncoderOptions {
 
 impl VideoEncoder {
     pub fn new(options: VideoEncoderOptions) -> Result<Self, Error> {
-        println!("Options: {:?}", options);
-
         let encoder = unsafe {
             encoder_init(
                 options.width as Int,
@@ -53,7 +51,7 @@ impl VideoEncoder {
         };
 
         Ok(Self {
-            first_timespan: None,
+            first_timespan: 0,
             encoder,
         })
     }
@@ -61,7 +59,11 @@ impl VideoEncoder {
     pub fn ingest_next_frame(&mut self, frame: &Frame) -> Result<(), Error> {
         match frame {
             Frame::YUVFrame(data) => {
-                let timestamp = data.display_time;
+                if self.first_timespan == 0 {
+                    self.first_timespan = data.display_time;
+                }
+
+                let timestamp = data.display_time - self.first_timespan;
 
                 #[cfg(target_os = "macos")]
                 unsafe {
