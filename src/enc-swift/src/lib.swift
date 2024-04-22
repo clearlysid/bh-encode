@@ -6,7 +6,6 @@ import CoreVideo
 import CoreImage
 
 // TODO: handle errors better
-
 class Encoder: NSObject {
     var width: Int
     var height: Int
@@ -44,6 +43,9 @@ class Encoder: NSObject {
         if self.assetWriter.canAdd(self.assetWriterInput) {
             self.assetWriter.add(self.assetWriterInput)
         }
+
+        self.assetWriter.startWriting()
+        self.assetWriter.startSession(atSourceTime: CMTime.zero)
     }  
 }
 
@@ -57,7 +59,56 @@ func encoderInit(_ width: Int, _ height: Int, _ outFile: SRString) -> Encoder {
     )
 }
 
-// NOTES: make any timestamp adjustments in Rust before passing here
+func createCvPixelBufferFromYuvFrameData(
+    _ width: Int,
+    _ height: Int,
+    _ displayTime: Int,
+    _ luminanceStride: Int,
+    _ luminanceBytes: [UInt8],
+    _ chrominanceStride: Int,
+    _ chrominanceBytes: [UInt8]
+) -> CVPixelBuffer? {
+
+    let pixelBufferAttributes: CFDictionary = [
+        kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+        kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+    ] as CFDictionary
+
+    var pixelBuffer: CVPixelBuffer?
+
+    let status = CVPixelBufferCreate(
+        kCFAllocatorDefault,
+        width,
+        height,
+        kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+        pixelBufferAttributes,
+        &pixelBuffer
+    )
+
+    if status != kCVReturnSuccess {
+        print("Failed to create CVPixelBuffer")
+        return nil
+    }
+
+    // Get the base addresses of the Y and UV planes
+    CVPixelBufferLockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
+    let yPlaneAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer!, 0)
+    let uvPlaneAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer!, 1)
+
+    // Copy the luminance (Y) data to the Y plane
+    let yDestPointer = yPlaneAddress?.assumingMemoryBound(to: UInt8.self)
+    yDestPointer?.update(from: luminanceBytes, count: luminanceBytes.count)
+
+    // Copy the chrominance (UV) data to the UV plane
+    let uvDestPointer = uvPlaneAddress?.assumingMemoryBound(to: UInt8.self)
+    uvDestPointer?.update(from: chrominanceBytes, count: chrominanceBytes.count)
+
+    CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
+
+    return pixelBuffer
+}
+
+// NOTE: make any timestamp adjustments in Rust before passing here
 
 @_cdecl("encoder_ingest_yuv_frame")
 func encoderIngestYuvFrame(
@@ -70,54 +121,47 @@ func encoderIngestYuvFrame(
     _ chrominanceStride: Int,
     _ chrominanceBytesRaw: SRData
 ) {
-    print("Swift: yuvDisplayTime: \(displayTime)")
-
-    var luminanceBytes = luminanceBytesRaw.toArray()
-    var chrominanceBytes = chrominanceBytesRaw.toArray()
-
-    // TODO: create a CVPixelBuffer from YUV data so we can prepare for encoding
+    let luminanceBytes = luminanceBytesRaw.toArray()
+    let chrominanceBytes = chrominanceBytesRaw.toArray()
 
     // Create a CVPixelBuffer from YUV data
-    let pixelBufferAttributes: CFDictionary = [
-        kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
-        kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-    ] as CFDictionary
-
-    var pixelBuffer: CVPixelBuffer?
-    let status = CVPixelBufferCreate(
-        kCFAllocatorDefault,
+    var pixelBuffer = createCvPixelBufferFromYuvFrameData(
         width,
         height,
-        kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
-        pixelBufferAttributes,
-        &pixelBuffer
+        displayTime,
+        luminanceStride,
+        luminanceBytes,
+        chrominanceStride,
+        chrominanceBytes
     )
-
-    if status != kCVReturnSuccess {
-        print("Failed to create CVPixelBuffer")
-        return
+            
+    // Append the CVPixelBuffer to the AVAssetWriter
+    if enc.assetWriterInput.isReadyForMoreMediaData {
+        let frameTime = CMTimeMake(value: Int64(displayTime), timescale: 1000000000)
+        let success = enc.pixelBufferAdaptor.append(pixelBuffer!, withPresentationTime: frameTime)
+        if !success {
+            print("Asset writer error: \(enc.assetWriter.error?.localizedDescription ?? "Unknown error")")
+        } else {
+            print("frame appended successfully")
+        }
+    } else {
+        print("Asset writer input is not ready for more media data")
     }
-
-    // Get the base addresses of the Y and UV planes
-    CVPixelBufferLockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
-    let yPlaneAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer!, 0)
-    let uvPlaneAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer!, 1)
-
-    // Copy the luminance (Y) data to the Y plane
-    let yDestPointer = yPlaneAddress?.assumingMemoryBound(to: UInt8.self)
-    yDestPointer?.assign(from: luminanceBytes, count: luminanceBytes.count)
-
-    // Copy the chrominance (UV) data to the UV plane
-    let uvDestPointer = uvPlaneAddress?.assumingMemoryBound(to: UInt8.self)
-    uvDestPointer?.assign(from: chrominanceBytes, count: chrominanceBytes.count)
-
-    CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
-
-    print("Swift: ingested frame")
-    
 }
 
 @_cdecl("encoder_finish")
 func encoderFinish(_ enc: Encoder) {
-    print("Swift: finish encoding")
+
+    // TODO: figure out how to gracefully end session
+    // enc.assetWriter.endSession(atSourceTime: CMTime)
+    
+    enc.assetWriterInput.markAsFinished()
+    enc.assetWriter.finishWriting{}
+
+    while enc.assetWriter.status == .writing {
+        print("Waiting for asset writer to finish writing...")
+        usleep(500000)
+    }
+
+    print("Asset writer finished writing")
 }
